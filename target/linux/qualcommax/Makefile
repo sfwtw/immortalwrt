@@ -16,6 +16,8 @@ DEFAULT_PACKAGES += \
 	kmod-leds-gpio kmod-gpio-button-hotplug \
 	kmod-qca-nss-dp kmod-ath11k-ahb wpad-openssl \
 	uboot-envtools losetup \
-	automount cpufreq
+	automount cpufreq \
+	kmod-qca-nss-drv kmod-qca-nss-ecm \
+	kmod-qca-nss-drv-bridge-mgr
 
 $(eval $(call BuildTarget))
