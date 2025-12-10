@@ -22,13 +22,25 @@ PKG_LICENSE:=GPL-2.0
 include $(INCLUDE_DIR)/package.mk
 include $(INCLUDE_DIR)/cmake.mk
 
-CMAKE_OPTIONS += -DUBUS=1
+CMAKE_OPTIONS += \
+	-DUSE_LIBUBOX=on
+
+ifneq ($(CONFIG_PACKAGE_odhcp6c_ext_cer_id),0)
+  CMAKE_OPTIONS += -DEXT_CER_ID=$(CONFIG_PACKAGE_odhcp6c_ext_cer_id)
+endif
 
 define Package/odhcp6c
   SECTION:=net
   CATEGORY:=Network
   TITLE:=Embedded DHCPv6-client for OpenWrt
   DEPENDS:=@IPV6 +libubox +libubus
+endef
+
+define Package/odhcp6c/config
+  config PACKAGE_odhcp6c_ext_cer_id
+    int "CER-ID Extension ID (0 = disabled)"
+    depends on PACKAGE_odhcp6c
+    default 0
 endef
 
 define Package/odhcp6c/conffiles

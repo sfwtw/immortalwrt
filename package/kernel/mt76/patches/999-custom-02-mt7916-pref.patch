@@ -1,0 +1,13 @@
+--- a/mt7915/dma.c
++++ b/mt7915/dma.c
+@@ -349,8 +349,8 @@ static int mt7915_dma_enable(struct mt79
+ 			mt76_wr(dev, MT_WFDMA1_RST_DTX_PTR + hif1_ofs, ~0);
+ 	}
+ 
+-	/* configure delay interrupt off */
+-	mt76_wr(dev, MT_WFDMA0_PRI_DLY_INT_CFG0, 0);
++	/* configure delay interrupt on */
++	mt76_wr(dev, MT_WFDMA0_PRI_DLY_INT_CFG0, 0x00100040);
+ 	if (is_mt7915(mdev)) {
+ 		mt76_wr(dev, MT_WFDMA1_PRI_DLY_INT_CFG0, 0);
+ 	} else {
