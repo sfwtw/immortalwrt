@@ -610,3 +610,45 @@ define Device/xunlong_orangepi-r1-plus-lts
   DEVICE_PACKAGES := kmod-usb-net-rtl8152
 endef
 TARGET_DEVICES += xunlong_orangepi-r1-plus-lts
+
+define Device/rumu3f_fine-3399
+  $(Device/rk3399)
+  DEVICE_VENDOR := RUMU3F
+  DEVICE_MODEL := FINE 3399
+  DEVICE_DTS := rk3399-fine-3399
+  UBOOT_DEVICE_NAME := fine3399-rk3399
+  BOOT_SCRIPT := fine3399
+  DEVICE_PACKAGES := kmod-usb-net-rtl8152 kmod-hwmon-pwmfan
+endef
+TARGET_DEVICES += rumu3f_fine-3399
+
+define Device/erya_fnet-3399
+  $(Device/rk3399)
+  DEVICE_VENDOR := Erya
+  DEVICE_MODEL := FNet 3399
+  DEVICE_DTS := rk3399-fnet-3399
+  UBOOT_DEVICE_NAME := fnet3399-rk3399
+  DEVICE_PACKAGES := kmod-usb-net-rtl8152 kmod-hwmon-pwmfan kmod-rfkill
+endef
+TARGET_DEVICES += erya_fnet-3399
+
+define Device/erya_fnet-3582
+  $(Device/rk3582)
+  DEVICE_VENDOR := Erya
+  DEVICE_MODEL := FNet 3582
+  DEVICE_DTS := rk3588s-fnet-3582
+  UBOOT_DEVICE_NAME := evb-rk3588
+  DEVICE_PACKAGES := kmod-hwmon-pwmfan kmod-rfkill
+endef
+TARGET_DEVICES += erya_fnet-3582
+
+define Device/cmiot_g04
+  $(Device/rk3568)
+  DEVICE_VENDOR := CMIOT
+  DEVICE_MODEL := G04
+  DEVICE_DTS := rk3568-cmiot-g04
+  UBOOT_DEVICE_NAME := roc-pc-rk3568
+  DEVICE_PACKAGES := kmod-ata-ahci-dwc wpad-openssl
+endef
+TARGET_DEVICES += cmiot_g04
+

@@ -1,0 +1,267 @@
+--- a/drivers/usb/core/hcd.c
++++ b/drivers/usb/core/hcd.c
+@@ -37,6 +37,9 @@
+ #include <linux/usb.h>
+ #include <linux/usb/hcd.h>
+ #include <linux/usb/otg.h>
++#include <linux/of.h>
++#include <linux/of_address.h>
++#include <linux/sort.h>
+ 
+ #include "usb.h"
+ #include "phy.h"
+@@ -92,6 +95,18 @@ EXPORT_SYMBOL_GPL (usb_bus_idr);
+ DEFINE_MUTEX(usb_bus_idr_lock);	/* exported only for usbfs */
+ EXPORT_SYMBOL_GPL (usb_bus_idr_lock);
+ 
++/* USB controller address to bus number mapping */
++struct usb_controller_mapping {
++	u64 phys_addr;
++	int bus_number;
++	bool allocated;
++};
++
++#define MAX_USB_CONTROLLERS 16
++static struct usb_controller_mapping usb_addr_map[MAX_USB_CONTROLLERS];
++static int usb_controller_count;
++static bool usb_addr_map_initialized;
++
+ /* used for controlling access to virtual root hubs */
+ static DEFINE_SPINLOCK(hcd_root_hub_lock);
+ 
+@@ -107,6 +122,170 @@ DECLARE_WAIT_QUEUE_HEAD(usb_kill_urb_que
+ /*-------------------------------------------------------------------------*/
+ 
+ /*
++ * USB controller address mapping functions
++ */
++
++/* Compare function for sorting controllers by physical address */
++static int usb_addr_cmp(const void *a, const void *b)
++{
++	const struct usb_controller_mapping *ma = a;
++	const struct usb_controller_mapping *mb = b;
++
++	if (ma->phys_addr < mb->phys_addr)
++		return -1;
++	if (ma->phys_addr > mb->phys_addr)
++		return 1;
++	return 0;
++}
++
++/* Scan device tree for USB controllers and pre-allocate bus numbers */
++static void usb_scan_and_map_controllers(void)
++{
++	struct device_node *node = NULL;
++	struct device_node *root;
++	int count = 0;
++	int j;
++
++	if (usb_addr_map_initialized)
++		return;
++
++	memset(usb_addr_map, 0, sizeof(usb_addr_map));
++
++	root = of_find_node_by_path("/");
++	if (!root) {
++		pr_warn("USB: Cannot find device tree root\n");
++		usb_addr_map_initialized = true;
++		return;
++	}
++
++	/* Recursively scan all nodes in device tree for "usb@" nodes */
++	for_each_of_allnodes(node) {
++		const char *node_name;
++		struct resource res;
++		const char *status;
++		int found;
++		
++		if (count >= MAX_USB_CONTROLLERS)
++			break;
++			
++		node_name = of_node_full_name(node);
++		if (!node_name)
++			continue;
++			
++		/* Check if node name contains "usb@" */
++		if (!strstr(node_name, "usb@"))
++			continue;
++		
++		/* Check if device is enabled (no status property means enabled) */
++		status = of_get_property(node, "status", NULL);
++		if (status && strcmp(status, "disabled") == 0) {
++			pr_debug("USB: Skipping disabled controller %s\n", node_name);
++			continue;
++		}
++		
++		/* Get physical address */
++		if (of_address_to_resource(node, 0, &res) != 0)
++			continue;
++		
++		/* Check if this address is already in our list */
++		found = 0;
++		for (j = 0; j < count; j++) {
++			if (usb_addr_map[j].phys_addr == res.start) {
++				found = 1;
++				break;
++			}
++		}
++		
++		if (!found) {
++			usb_addr_map[count].phys_addr = res.start;
++			usb_addr_map[count].bus_number = -1;
++			usb_addr_map[count].allocated = false;
++			count++;
++			pr_info("USB: Found enabled controller at 0x%llx (%s)\n",
++				(unsigned long long)res.start, node_name);
++		}
++	}
++	
++	of_node_put(root);
++
++	usb_controller_count = count;
++
++	/* Sort controllers by physical address */
++	if (count > 1) {
++		sort(usb_addr_map, count, sizeof(struct usb_controller_mapping),
++		     usb_addr_cmp, NULL);
++	}
++
++	/* Pre-allocate bus numbers based on address order */
++	for (j = 0; j < count; j++) {
++		usb_addr_map[j].bus_number = j + 1;
++		pr_info("USB: Controller 0x%llx mapped to bus %d\n",
++			(unsigned long long)usb_addr_map[j].phys_addr,
++			usb_addr_map[j].bus_number);
++	}
++
++	usb_addr_map_initialized = true;
++}
++
++/* Get pre-allocated bus number for a given physical address */
++static int usb_get_preallocated_busnum(struct device *dev)
++{
++	struct device_node *node;
++	struct device_node *parent;
++	struct resource res;
++	int i;
++	int found = 0;
++
++	if (!usb_addr_map_initialized)
++		return -1;
++
++	/* Get device node and physical address */
++	node = dev->of_node;
++	if (!node)
++		return -1;
++
++	/* Try current node first */
++	if (of_address_to_resource(node, 0, &res) == 0) {
++		found = 1;
++	} else {
++		/* Try parent node if this is a child device (like dwc3) */
++		parent = of_get_parent(node);
++		if (parent) {
++			if (of_address_to_resource(parent, 0, &res) == 0) {
++				found = 1;
++			}
++			of_node_put(parent);
++		}
++	}
++
++	if (!found)
++		return -1;
++
++	/* Find matching address in our map */
++	for (i = 0; i < usb_controller_count; i++) {
++		if (usb_addr_map[i].phys_addr == res.start) {
++			if (!usb_addr_map[i].allocated) {
++				usb_addr_map[i].allocated = true;
++				pr_info("USB: Assigning pre-allocated bus %d to controller at 0x%llx\n",
++					usb_addr_map[i].bus_number,
++					(unsigned long long)res.start);
++				return usb_addr_map[i].bus_number;
++			} else {
++				/* Already allocated, but return it anyway for this address */
++				pr_info("USB: Controller at 0x%llx already has bus %d\n",
++					(unsigned long long)res.start,
++					usb_addr_map[i].bus_number);
++				return usb_addr_map[i].bus_number;
++			}
++		}
++	}
++
++	return -1;
++}
++
++/*-------------------------------------------------------------------------*/
++
++/*
+  * Sharable chunks of root hub code.
+  */
+ 
+@@ -888,6 +1067,7 @@ static void usb_bus_init (struct usb_bus
+  *
+  * Assigns a bus number, and links the controller into usbcore data
+  * structures so that it can be seen by scanning the bus list.
++ * Uses pre-allocated bus numbers based on physical address order if available.
+  *
+  * Return: 0 if successful. A negative error code otherwise.
+  */
+@@ -895,9 +1075,55 @@ static int usb_register_bus(struct usb_b
+ {
+ 	int result = -E2BIG;
+ 	int busnum;
++	int preallocated_busnum;
++	int fallback_start;
++
++	/* Initialize address mapping on first registration */
++	if (!usb_addr_map_initialized) {
++		usb_scan_and_map_controllers();
++	}
+ 
+ 	mutex_lock(&usb_bus_idr_lock);
+-	busnum = idr_alloc(&usb_bus_idr, bus, 1, USB_MAXBUS, GFP_KERNEL);
++
++	/* Try to get pre-allocated bus number based on physical address */
++	preallocated_busnum = usb_get_preallocated_busnum(bus->controller);
++	
++	if (preallocated_busnum > 0) {
++		/* Use pre-allocated bus number */
++		busnum = idr_alloc(&usb_bus_idr, bus, preallocated_busnum,
++				   preallocated_busnum + 1, GFP_KERNEL);
++		if (busnum < 0) {
++			/* Pre-allocated number already in use, fall back to dynamic */
++			pr_warn("USB: Pre-allocated bus %d already in use, falling back\n",
++				preallocated_busnum);
++			/* Allocate after all pre-allocated numbers */
++			fallback_start = usb_controller_count + 1;
++			busnum = idr_alloc(&usb_bus_idr, bus, fallback_start, USB_MAXBUS, GFP_KERNEL);
++			if (busnum >= 0) {
++				pr_info("USB: Assigned fallback bus number %d (after pre-allocated range)\n",
++					busnum);
++			}
++		} else {
++			pr_info("USB: Using pre-allocated bus number %d for controller\n",
++				busnum);
++		}
++	} else {
++		/* 
++		 * No pre-allocation available (controller not in device tree or disabled)
++		 * Allocate bus number after all pre-allocated numbers
++		 */
++		fallback_start = usb_controller_count + 1;
++		busnum = idr_alloc(&usb_bus_idr, bus, fallback_start, USB_MAXBUS, GFP_KERNEL);
++		if (busnum >= 0) {
++			pr_info("USB: No pre-allocation for this controller, assigned bus %d (fallback range)\n",
++				busnum);
++		} else {
++			/* If that fails, try from beginning */
++			pr_warn("USB: Fallback range full, trying from beginning\n");
++			busnum = idr_alloc(&usb_bus_idr, bus, 1, USB_MAXBUS, GFP_KERNEL);
++		}
++	}
++
+ 	if (busnum < 0) {
+ 		pr_err("%s: failed to get bus number\n", usbcore_name);
+ 		goto error_find_busnum;

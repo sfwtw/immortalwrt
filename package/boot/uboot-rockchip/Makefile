@@ -344,7 +344,8 @@ define U-Boot/roc-pc-rk3568
   $(U-Boot/rk3568/Default)
   NAME:=Station P2
   BUILD_DEVICES:= \
-    firefly_roc-rk3568-pc
+    firefly_roc-rk3568-pc \
+    cmiot_g04
 endef
 
 define U-Boot/rock-3a-rk3568

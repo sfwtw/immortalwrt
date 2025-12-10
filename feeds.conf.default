@@ -6,3 +6,12 @@ src-git video https://github.com/openwrt/video.git
 #src-git targets https://github.com/openwrt/targets.git
 #src-git oldpackages http://git.openwrt.org/packages.git
 #src-link custom /usr/src/openwrt/custom-feed
+
+src-git qmodem https://github.com/FUjr/Qmodem.git;main
+
+src-replace packages/net/v2ray-geodata https://github.com/sbwml/v2ray-geodata.git
+src-replace packages/net/mosdns https://github.com/sbwml/luci-app-mosdns.git
+src-replace luci/themes/luci-theme-aurora https://github.com/eamonxg/luci-theme-aurora.git
+
+src-git istore_nas https://github.com/linkease/nas-packages.git;master
+src-git istore_nas_luci https://github.com/linkease/nas-packages-luci.git;main
