@@ -1,0 +1,65 @@
+#!/bin/sh
+. /lib/functions.sh
+
+if [ -f '/etc/apk/repositories.d/distfeeds.list' ]; then
+    patterns_to_remove="qmodem istore nss theme"
+    temp_file=$(mktemp)
+    while IFS= read -r line; do
+        remove=0
+        for pattern in $patterns_to_remove; do
+            if echo "$line" | grep -q "${pattern}"; then
+                remove=1
+                break
+            fi
+        done
+        if [ "$remove" -eq 0 ]; then
+            echo "$line" >> "$temp_file"
+        fi
+    done < /etc/apk/repositories.d/distfeeds.list
+    cat "$temp_file" > /etc/apk/repositories.d/distfeeds.list
+    rm "$temp_file"
+fi
+
+uci batch <<-EOF
+	set luci.main.mediaurlbase=/luci-static/aurora
+	commit luci
+EOF
+
+case $(board_name) in
+    aaeon-upn-ehl01)
+        if lspci | grep -q "Network controller: MEDIATEK Corp. Device 7906"; then
+            uci set wireless.radio1.htmode='HE160'
+            uci set wireless.radio1.country='CN'
+            uci set wireless.radio1.cell_density='0'
+
+            uci set wireless.default_radio1.ssid='答辩屋'
+            uci set wireless.default_radio1.encryption='sae-mixed'
+            uci set wireless.default_radio1.key='111222333'
+            uci set wireless.default_radio1.ocv='0'
+            uci set wireless.default_radio1.max_inactivity='10'
+
+            uci set wireless.radio0.cell_density='0'
+            uci set wireless.radio0.htmode='HE40'
+            uci set wireless.radio0.channel='11'
+            uci set wireless.radio0.country='CN'
+
+            uci set wireless.default_radio0.ssid='答辩屋-2.4G'
+            uci set wireless.default_radio0.encryption='sae-mixed'
+            uci set wireless.default_radio0.key='111222333'
+            uci set wireless.default_radio0.ocv='0'
+            uci set wireless.default_radio0.max_inactivity='10'
+            uci commit wireless
+        fi
+        sed -i s/rootwait/rootwait\ pcie_aspm=off/g /boot/grub/grub.cfg
+        ;;
+esac
+
+sed -i '/\/bin\/login -f root/!s|/bin/login|/bin/login -f root|' /etc/config/ttyd
+
+sed -i '/OPENWRT_RELEASE/d' /usr/lib/os-release
+echo "OPENWRT_RELEASE='ImmortalWrt-IPQ (with QSDK) / R25.12.22'" >> /usr/lib/os-release
+
+rm -rf /tmp/luci-modulecache/
+rm -f /tmp/luci-indexcache
+
+exit 0
