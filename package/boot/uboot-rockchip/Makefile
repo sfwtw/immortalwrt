@@ -117,6 +117,14 @@ define U-Boot/rk3399/Default
   ATF:=$(RK3399_ATF)
 endef
 
+define U-Boot/fine3399-rk3399
+  $(U-Boot/rk3399/Default)
+  NAME:=Fine3399
+  BUILD_DEVICES:= \
+    rumu3f_fine3399 \
+    erya_fnet3399
+endef
+
 define U-Boot/guangmiao-g4c-rk3399
   $(U-Boot/rk3399/Default)
   NAME:=GuangMiao G4C
@@ -351,7 +359,8 @@ define U-Boot/roc-pc-rk3568
   $(U-Boot/rk3568/Default)
   NAME:=Station P2
   BUILD_DEVICES:= \
-    firefly_roc-rk3568-pc
+    firefly_roc-rk3568-pc \
+    cmiot_g04
 endef
 
 define U-Boot/rock-3a-rk3568
@@ -519,6 +528,7 @@ define U-Boot/rock-5c-rk3588s
 endef
 
 UBOOT_TARGETS := \
+  fine3399-rk3399 \
   guangmiao-g4c-rk3399 \
   nanopc-t4-rk3399 \
   nanopi-r4s-rk3399 \

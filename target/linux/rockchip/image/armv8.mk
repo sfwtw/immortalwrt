@@ -121,6 +121,15 @@ define Device/armsom_sige7
 endef
 TARGET_DEVICES += armsom_sige7
 
+define Device/cmiot_g04
+  $(Device/rk3568)
+  DEVICE_VENDOR := CMIOT
+  DEVICE_MODEL := G04
+  UBOOT_DEVICE_NAME := roc-pc-rk3568
+  DEVICE_PACKAGES := kmod-ata-ahci-dwc wpad-openssl
+endef
+TARGET_DEVICES += cmiot_g04
+
 define Device/cyber_cyber3588-aib
   $(Device/rk3588)
   DEVICE_VENDOR := Cyber
@@ -130,6 +139,15 @@ define Device/cyber_cyber3588-aib
 	kmod-usb-serial-option uqmi
 endef
 TARGET_DEVICES += cyber_cyber3588-aib
+
+define Device/erya_fnet3399
+  $(Device/rk3399)
+  DEVICE_VENDOR := Erya
+  DEVICE_MODEL := FNet3399
+  UBOOT_DEVICE_NAME := fine3399-rk3399
+  DEVICE_PACKAGES := kmod-usb-net-rtl8152 kmod-hwmon-pwmfan kmod-rfkill
+endef
+TARGET_DEVICES += erya_fnet3399
 
 define Device/ezpro_mrkaio-m68s
   $(Device/rk3568)
@@ -575,6 +593,14 @@ define Device/radxa_zero-3w
   DEVICE_PACKAGES := kmod-usb-net-cdc-ncm kmod-usb-net-rndis
 endef
 TARGET_DEVICES += radxa_zero-3w
+
+define Device/rumu3f_fine3399
+  $(Device/rk3399)
+  DEVICE_VENDOR := RUMU3F
+  DEVICE_MODEL := FINE3399
+  DEVICE_PACKAGES := kmod-usb-net-rtl8152 kmod-hwmon-pwmfan
+endef
+TARGET_DEVICES += rumu3f_fine3399
 
 define Device/sinovoip_bpi-r2-pro
   $(Device/rk3568)
