@@ -30,6 +30,7 @@ my ($mkv1, $mkv2) = split /\./, $mkver[2];
 $valid_mk or die "Unsupported version of make found: $mk\n";
 
 my @feeds;
+my @replace_feeds;
 my %build_packages;
 my %installed;
 my %installed_pkg;
@@ -55,7 +56,7 @@ sub parse_file($$) {
 		$line++;
 		next unless /\S/;
 
-		my ($type, $flags, $name, $urls) = m!^src-([\w\-]+)((?:\s+--\w+(?:=\S+)?)*)\s+(\w+)(?:\s+(\S.*))?$!;
+		my ($type, $flags, $name, $urls) = m!^src-([\w\-]+)((?:\s+--\w+(?:=\S+)?)*)\s+([\w\/\-]+)(?:\s+(\S.*))?$!;
 		unless ($type && $name) {
 			die "Syntax error in $fname, line $line\n";
 		}
@@ -80,7 +81,11 @@ sub parse_file($$) {
 			next;
 		}
 
-		push @feeds, ["src-$type", $name, \@src, \%flags];
+		if ($type eq "replace") {
+			push @replace_feeds, ["src-$type", $name, \@src, \%flags];
+		} else {
+			push @feeds, ["src-$type", $name, \@src, \%flags];
+		}
 	}
 	close $fh;
 	return 1;
@@ -257,6 +262,76 @@ sub update_feed_via($$$$$$$$) {
 	if ($m->{'post_update'}) {
 		my $cmd = $m->{'post_update'};
 		system("cd '$localpath'; $cmd") == 0 or return 1;
+	}
+
+	return 0;
+}
+
+sub update_replace($$$$$$) {
+	my ($name, $src, $force, $rebase, $stash, $flags) = @_;
+	my $url = $src->[0];
+	my ($base_branch, $branch) = split(/;/, $url, 2);
+	my ($base_commit, $commit) = split(/\^/, $url, 2);
+	
+	my $repo_url = $base_commit || $base_branch || $url;
+
+	my ($feed, $path) = split('/', $name, 2);
+	my $localpath = "./feeds/$feed/$path";
+
+	if (defined $flags->{'root'}) {
+		$localpath .= "_root";
+	}
+
+	my $safepath = $localpath;
+	$safepath =~ s/'/'\\''/g;
+
+	warn "Updating replace '$name' from '$repo_url' ...\n";
+	if (-d "$localpath/.git") {
+		open my $fh, "cd '$safepath' && git remote get-url origin 2>/dev/null |";
+		my $current_url = <$fh>;
+		chomp $current_url if $current_url;
+		close $fh;
+		if ($current_url && $current_url eq $repo_url) {
+			my $update_cmd = "git pull --ff-only --quiet";
+			if ($force) {
+				$update_cmd = "git pull --ff-only --quiet || (git reset --hard HEAD; git pull --ff-only --quiet; exit 1)";
+			}
+			if ($rebase) {
+				$update_cmd = "git pull --rebase=merges --quiet";
+			}
+			if ($stash) {
+				$update_cmd = "git pull --rebase=merges --autostash --quiet";
+			}
+
+			system("cd '$safepath' && git fetch --quiet");
+			my $status = `cd '$safepath' && git status -uno`;
+			if ($status =~ /up to date/) {
+				warn "Already up to date.\n";
+			} else {
+				system("cd '$safepath' && $update_cmd");
+				warn "Updated.\n";
+			}
+		} else {
+			system("rm -rf '$safepath'");
+			my $clone_cmd = "git clone --depth 1";
+			$clone_cmd .= " --branch '$branch'" if $branch;
+			$clone_cmd .= " '$repo_url' '$safepath'";
+			system($clone_cmd);
+			if ($commit) {
+				system("cd '$safepath' && git fetch --depth=1 origin '$commit' && git -c advice.detachedHead=false checkout '$commit'");
+			}
+			warn "Replaced with new repo.\n";
+		}
+	} else {
+		system("rm -rf '$safepath'");
+		my $clone_cmd = "git clone --depth 1";
+		$clone_cmd .= " --branch '$branch'" if $branch;
+		$clone_cmd .= " '$repo_url' '$safepath'";
+		system($clone_cmd);
+		if ($commit) {
+			system("cd '$safepath' && git fetch --depth=1 origin '$commit' && git -c advice.detachedHead=false checkout '$commit'");
+		}
+		warn "Cloned new repo.\n";
 	}
 
 	return 0;
@@ -884,6 +959,19 @@ sub update {
 		}
 		push @index_feeds, $name;
 	}
+
+	foreach my $replace (@replace_feeds) {
+		my ($type, $name, $src, $flags) = @$replace;
+		my $feed_name = (split('/', $name))[0];
+		next unless $#ARGV == -1 or $opts{a} or $argv_feeds{$feed_name};
+		if (not $opts{i}) {
+			update_replace($name, $src, $opts{f}, $opts{r}, $opts{s}, $flags) == 0 or $failed=1;
+		}
+		if (!grep {$_ eq $feed_name} @index_feeds) {
+			push @index_feeds, $feed_name;
+		}
+	}
+
 	foreach my $name (@index_feeds) {
 		warn "Create index file './feeds/$name.index' \n";
 		update_index($name) == 0 or do {
